@@ -6,6 +6,7 @@ import { SingleRoomModule } from './single-room/single-room.module';
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { TYPEORM_CONFIG } from "../config/typeOrm.config";
 import { DeckModule } from './deck/deck.module';
+import { GameFlowModule } from './game-flow/game-flow.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DeckModule } from './deck/deck.module';
     MessagesModule,
     SingleRoomModule,
     DeckModule,
+    GameFlowModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -11,6 +11,7 @@ export class DeckService {
     game.getState().players.map(function(m) {
       hands.push(m.hand);
     });
+    // game.checkResult()
     return hands;
   }
 }
