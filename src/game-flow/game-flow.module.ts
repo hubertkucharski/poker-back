@@ -3,6 +3,6 @@ import { GameFlowService } from './game-flow.service';
 import { GameFlowGateway } from './game-flow.gateway';
 
 @Module({
-  providers: [GameFlowGateway, GameFlowService]
+  providers: [GameFlowGateway, GameFlowService],
 })
 export class GameFlowModule {}

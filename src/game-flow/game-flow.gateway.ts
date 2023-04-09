@@ -1,8 +1,14 @@
-import { WebSocketGateway, SubscribeMessage, MessageBody, WebSocketServer, ConnectedSocket } from "@nestjs/websockets";
+import {
+  WebSocketGateway,
+  SubscribeMessage,
+  MessageBody,
+  WebSocketServer,
+  ConnectedSocket,
+} from '@nestjs/websockets';
 import { GameFlowService } from './game-flow.service';
 import { CreateGameFlowDto } from './dto/create-game-flow.dto';
 import { UpdateGameFlowDto } from './dto/update-game-flow.dto';
-import { Server, Socket } from "socket.io";
+import { Server, Socket } from 'socket.io';
 
 @WebSocketGateway({
   cors: {
@@ -16,8 +22,14 @@ export class GameFlowGateway {
   constructor(private readonly gameFlowService: GameFlowService) {}
 
   @SubscribeMessage('createGameFlow')
-  async create(@MessageBody() createGameFlowDto: CreateGameFlowDto, @ConnectedSocket() client: Socket) {
-    const playersHands = this.gameFlowService.create(createGameFlowDto, client.id);
+  async create(
+    @MessageBody() createGameFlowDto: CreateGameFlowDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    const playersHands = this.gameFlowService.create(
+      createGameFlowDto,
+      client.id,
+    );
     this.server.emit('initRound', playersHands);
     return 'playersHands';
   }
