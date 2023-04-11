@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { SingleRoom } from "./singleRoom.entity";
+import { SingleRoom } from './singleRoom.entity';
 
 @Injectable()
 export class SingleRoomService {
   async create(id: string) {
-    await SingleRoom.save({roomName: id});
-    return {message: "success", statusCode: 200};
+    await SingleRoom.save({ roomName: id });
+    return { message: 'success', statusCode: 200 };
   }
 
   async findAll(): Promise<SingleRoom[]> {
