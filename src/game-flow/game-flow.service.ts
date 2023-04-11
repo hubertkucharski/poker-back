@@ -3,9 +3,13 @@ import { CreateGameFlowDto } from './dto/create-game-flow.dto';
 import { UpdateGameFlowDto } from './dto/update-game-flow.dto';
 import { Game } from 'holdem-poker';
 
+const INITIAL_BET = 10;
+const DEFAULT_PLAYER_MONEY = 100;
+const PLAYER_CONFIG = [DEFAULT_PLAYER_MONEY, DEFAULT_PLAYER_MONEY];
+
 @Injectable()
 export class GameFlowService {
-  game: any = new Game([100, 100, 100, 100], 10);
+  game: any = new Game(PLAYER_CONFIG, INITIAL_BET);
   clientToUser = {};
 
   create(createGameFlowDto: CreateGameFlowDto, clientId: string) {

@@ -31,7 +31,6 @@ export class GameFlowGateway {
       client.id,
     );
     this.server.emit('initRound', playersHands);
-    return 'playersHands';
   }
 
   @SubscribeMessage('findOneGameFlow')
