@@ -10,6 +10,11 @@ import { CreateGameFlowDto } from './dto/create-game-flow.dto';
 import { UpdateGameFlowDto } from './dto/update-game-flow.dto';
 import { Server, Socket } from 'socket.io';
 
+export interface Client {
+  clientId: string;
+  playerBalance: number;
+}
+
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -21,47 +26,30 @@ export class GameFlowGateway {
 
   constructor(private readonly gameFlowService: GameFlowService) {}
 
+  handleConnection(client: Socket) {
+    const playerIndexOnTable = this.gameFlowService.playerJoin(client.id);
+    client.emit('joinGame', playerIndexOnTable);
+  }
+
   @SubscribeMessage('createGameFlow')
   async create(
     @MessageBody() createGameFlowDto: CreateGameFlowDto,
     @ConnectedSocket() client: Socket,
   ) {
-    const playersHands = this.gameFlowService.create(
-      createGameFlowDto,
-      client.id,
-    );
+    const { roomId } = createGameFlowDto;
+    client.join(roomId);
+
+    const playersHands = this.gameFlowService.create(client.id);
     this.server.emit('initRound', playersHands);
   }
 
-  @SubscribeMessage('findOneGameFlow')
-  findOne(@MessageBody() id: number) {
-    return this.gameFlowService.findOne(id);
-  }
-
-  @SubscribeMessage('flop')
-  flop(@ConnectedSocket() client: Socket) {
-    return this.gameFlowService.flop(client.id);
+  handleDisconnect(client: Socket) {
+    this.gameFlowService.playerLeave(client.id);
   }
 
   @SubscribeMessage('endRound')
   endRound() {
     const commonCards = this.gameFlowService.endRound();
     this.server.emit('endRound', commonCards);
-    return 'End Round';
-  }
-
-  @SubscribeMessage('river')
-  river() {
-    return this.gameFlowService.river();
-  }
-
-  @SubscribeMessage('updateGameFlow')
-  update(@MessageBody() updateGameFlowDto: UpdateGameFlowDto) {
-    return this.gameFlowService.update(updateGameFlowDto.id, updateGameFlowDto);
-  }
-
-  @SubscribeMessage('removeGameFlow')
-  remove(@MessageBody() id: number) {
-    return this.gameFlowService.remove(id);
   }
 }
