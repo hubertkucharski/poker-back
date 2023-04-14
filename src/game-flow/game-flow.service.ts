@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Game } from 'holdem-poker';
 import { Client } from './game-flow.gateway';
+import { CreateGameFlowDto } from './dto/create-game-flow.dto';
 
 const INITIAL_BET = 10;
 const DEFAULT_PLAYER_MONEY = 100;
@@ -30,7 +31,7 @@ export class GameFlowService {
     }
   };
 
-  create(clientId: string) {
+  create(createGameFlowDto: CreateGameFlowDto, clientId: string) {
     if (this.playersList.length > 1) {
       this.game.newRound(
         this.playersList.map((player) => player.playerBalance),

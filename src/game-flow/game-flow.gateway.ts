@@ -39,7 +39,10 @@ export class GameFlowGateway {
     const { roomId } = createGameFlowDto;
     client.join(roomId);
 
-    const playersHands = this.gameFlowService.create(client.id);
+    const playersHands = this.gameFlowService.create(
+      createGameFlowDto,
+      client.id,
+    );
     this.server.emit('initRound', playersHands);
   }
 
