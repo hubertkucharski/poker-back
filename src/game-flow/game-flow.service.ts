@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { CreateGameFlowDto } from './dto/create-game-flow.dto';
-import { UpdateGameFlowDto } from './dto/update-game-flow.dto';
 import { Game } from 'holdem-poker';
+import { Client } from './game-flow.gateway';
+import { CreateGameFlowDto } from './dto/create-game-flow.dto';
 
 const INITIAL_BET = 10;
 const DEFAULT_PLAYER_MONEY = 100;
@@ -10,19 +10,40 @@ const PLAYER_CONFIG = [DEFAULT_PLAYER_MONEY, DEFAULT_PLAYER_MONEY];
 @Injectable()
 export class GameFlowService {
   game: any = new Game(PLAYER_CONFIG, INITIAL_BET);
-  clientToUser = {};
+  playersList: Client[] = [];
+
+  playerJoin(clientId: string) {
+    if (this.playersList.some((player) => player['clientId'] === clientId)) {
+      console.log('You are already sitting at the table');
+    } else
+      this.playersList.push({
+        clientId: clientId,
+        playerBalance: DEFAULT_PLAYER_MONEY,
+      });
+    return this.playersList.findIndex((player) => player.clientId === clientId);
+  }
+  playerLeave = (clientId) => {
+    for (let i = 0; i < this.playersList.length; i++) {
+      if (this.playersList[i].clientId === clientId) {
+        this.playersList.splice(i, 1);
+        break;
+      }
+    }
+  };
 
   create(createGameFlowDto: CreateGameFlowDto, clientId: string) {
-    this.game.startRound();
-    console.log('clientId ', clientId);
-    return this.game.players.map((hands) => hands.hand);
-  }
+    if (this.playersList.length > 1) {
+      this.game.newRound(
+        this.playersList.map((player) => player.playerBalance),
+        10,
+      );
+      this.game.startRound();
 
-  flop(clientId: string) {
-    console.log(this.game.canEndRound()); // always return true (why?)
-    this.game.endRound();
-    console.log('clientId ', clientId);
-    return `This action returns flop`;
+      return this.game.getState().players.map((hands) => hands.hand);
+    } else {
+      console.log('Wait for at least one more player.');
+      return [];
+    }
   }
 
   endRound() {
@@ -32,21 +53,5 @@ export class GameFlowService {
       return this.game.checkResult();
     }
     return this.game.getState().communityCards;
-  }
-
-  river() {
-    return this.game.checkResult();
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} gameFlow`;
-  }
-
-  update(id: number, updateGameFlowDto: UpdateGameFlowDto) {
-    return `This action updates a #${id} gameFlow`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} gameFlow`;
   }
 }
