@@ -7,14 +7,14 @@ import {
 } from '@nestjs/websockets';
 import { GameFlowService } from './game-flow.service';
 import { CreateGameFlowDto } from './dto/create-game-flow.dto';
-import { UpdateGameFlowDto } from './dto/update-game-flow.dto';
 import { Server, Socket } from 'socket.io';
+
+export const DEFAULT_ROOM_ID = '953bed85-690a-43bd-825a-b94e9ed4c722';
 
 export interface Client {
   clientId: string;
   playerBalance: number;
 }
-
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -23,11 +23,19 @@ export interface Client {
 export class GameFlowGateway {
   @WebSocketServer()
   server: Server;
-
   constructor(private readonly gameFlowService: GameFlowService) {}
 
-  handleConnection(client: Socket) {
-    const playerIndexOnTable = this.gameFlowService.playerJoin(client.id);
+  async handleConnection(client: Socket) {
+    const getCommonCards = {
+      commonCards: this.gameFlowService.game.getState().communityCards,
+    };
+    this.server.emit('currentState', getCommonCards);
+
+    const playerIndexOnTable = await this.gameFlowService.playerJoin(
+      client.id,
+      DEFAULT_ROOM_ID,
+    );
+
     client.emit('joinGame', playerIndexOnTable);
   }
 
@@ -36,18 +44,28 @@ export class GameFlowGateway {
     @MessageBody() createGameFlowDto: CreateGameFlowDto,
     @ConnectedSocket() client: Socket,
   ) {
-    const { roomId } = createGameFlowDto;
-    client.join(roomId);
+    client.join(DEFAULT_ROOM_ID);
 
-    const playersHands = this.gameFlowService.create(
-      createGameFlowDto,
-      client.id,
+    await this.gameFlowService.create(DEFAULT_ROOM_ID);
+
+    const allPlayers = await this.gameFlowService.getPlayersInRoom(
+      DEFAULT_ROOM_ID,
     );
-    this.server.emit('initRound', playersHands);
+
+    if (allPlayers.length > 1) {
+      for (const player of allPlayers) {
+        const playerHand = await this.gameFlowService.getPlayerCards(
+          player.clientId,
+          DEFAULT_ROOM_ID,
+        );
+        this.server.to(player.clientId).emit('initRound', playerHand);
+      }
+    } else client.emit('initRound', ['', '']);
   }
 
-  handleDisconnect(client: Socket) {
-    this.gameFlowService.playerLeave(client.id);
+  async handleDisconnect(client: Socket) {
+    await this.gameFlowService.playerLeave(client.id, DEFAULT_ROOM_ID);
+    console.log('Server disconnected');
   }
 
   @SubscribeMessage('endRound')

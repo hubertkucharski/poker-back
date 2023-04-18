@@ -9,7 +9,7 @@ export class SingleRoom extends BaseEntity {
   roomName: string;
 
   @Column({ nullable: true, type: 'smallint' })
-  playersAtTable: number;
+  maxPlayersAtTable: number;
 
   @Column({ nullable: true, type: 'smallint' })
   blinds: number;

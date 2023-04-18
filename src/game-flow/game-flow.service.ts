@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Game } from 'holdem-poker';
-import { Client } from './game-flow.gateway';
-import { CreateGameFlowDto } from './dto/create-game-flow.dto';
+import { GameStateService } from '../game-state/game-state.service';
+import { PlayersService } from '../players/players.service';
+import { Players } from '../players/players.entity';
 
 const INITIAL_BET = 10;
 const DEFAULT_PLAYER_MONEY = 100;
@@ -9,18 +10,23 @@ const PLAYER_CONFIG = [DEFAULT_PLAYER_MONEY, DEFAULT_PLAYER_MONEY];
 
 @Injectable()
 export class GameFlowService {
+  constructor(
+    @Inject(GameStateService) private gameStateService: GameStateService,
+    @Inject(PlayersService) private playersService: PlayersService,
+  ) {}
   game: any = new Game(PLAYER_CONFIG, INITIAL_BET);
-  playersList: Client[] = [];
 
   playerJoin(clientId: string) {
     if (this.playersList.some((player) => player['clientId'] === clientId)) {
       console.log('You are already sitting at the table');
-    } else
-      this.playersList.push({
-        clientId: clientId,
-        playerBalance: DEFAULT_PLAYER_MONEY,
-      });
-    return this.playersList.findIndex((player) => player.clientId === clientId);
+      const player = await Players.findOne({ where: { clientId: clientId } });
+
+      return player.playerIndex;
+    } else {
+      await this.playersService.addPlayer(clientId);
+
+      return await this.gameStateService.addPlayerToTable(clientId, roomId);
+    }
   }
   playerLeave = (clientId) => {
     for (let i = 0; i < this.playersList.length; i++) {
@@ -31,11 +37,12 @@ export class GameFlowService {
     }
   };
 
-  create(createGameFlowDto: CreateGameFlowDto, clientId: string) {
-    if (this.playersList.length > 1) {
+  async create(roomId: string) {
+    const playersInRoom = await this.getPlayersInRoom(roomId);
+    if (playersInRoom.length > 1) {
       this.game.newRound(
-        this.playersList.map((player) => player.playerBalance),
-        10,
+        playersInRoom.map((player) => player.balance),
+        INITIAL_BET,
       );
       this.game.startRound();
 
@@ -46,12 +53,22 @@ export class GameFlowService {
     }
   }
 
+  async getPlayerCards(clientId: string, roomId: string) {
+    const indexBe = await this.gameStateService.getPlayerIndex(
+      clientId,
+      roomId,
+    );
+    return this.game.getState().players[indexBe].hand;
+  }
+
   endRound() {
-    try {
-      this.game.endRound();
-    } catch {
-      return this.game.checkResult();
-    }
-    return this.game.getState().communityCards;
+    if (this.game.canEndRound()) {
+      try {
+        this.game.endRound();
+      } catch {
+        return this.game.checkResult();
+      }
+      return this.game.getState().communityCards;
+    } else console.log(this.game.getState(), 'this.game.getState()');
   }
 }
