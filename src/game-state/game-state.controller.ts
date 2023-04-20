@@ -1,6 +1,5 @@
 import { Controller, Get, Inject, Param, Post, Put } from '@nestjs/common';
 import { GameStateService } from './game-state.service';
-import { GameState } from './dto/game.state';
 import { DEFAULT_ROOM_ID } from '../game-flow/game-flow.gateway';
 
 @Controller('game-state')

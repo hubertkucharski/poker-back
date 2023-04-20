@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { GameState } from '../game-flow/game-state.entity';
+import { GameState } from './game-state.entity';
 import { Players } from '../players/players.entity';
+
+const DEFAULT_BLINDS = 5;
+const DEFAULT_NUMBER_OF_SEATS = 6;
+const DEFAULT_ACTIVE_PLAYER = 0;
 
 @Injectable()
 export class GameStateService {
@@ -16,17 +20,25 @@ export class GameStateService {
 
   async createState(): Promise<GameState> {
     const newGameState = new GameState();
-    newGameState.blinds = 3;
-    newGameState.listOfPlayers = [];
-    for (let i = 0; i < 6; i++) {
-      newGameState.listOfPlayers.push(i);
+    newGameState.blinds = DEFAULT_BLINDS;
+    newGameState.seatsAvailable = [];
+    newGameState.activePlayer = DEFAULT_ACTIVE_PLAYER;
+    for (let i = 0; i < DEFAULT_NUMBER_OF_SEATS; i++) {
+      newGameState.seatsAvailable.push(i);
     }
     await newGameState.save();
     return newGameState;
   }
 
-  async updateState(id: string) {
-    const oneGameState = await this.getOneState(id);
+  async updateState(roomId: string) {
+    const oneGameState = await this.getOneState(roomId);
+    await oneGameState.save();
+    return oneGameState;
+  }
+
+  async setActivePlayer(activePlayerIndex: number, roomId: string) {
+    let oneGameState = await this.getOneState(roomId);
+    oneGameState.activePlayer = activePlayerIndex;
     await oneGameState.save();
     return oneGameState;
   }
@@ -41,11 +53,12 @@ export class GameStateService {
     }
   }
   async findPlayersInRoom(roomId: string) {
-    const stateWithePlayersRelation = await GameState.find({
-      relations: ['players'],
-      where: { gameStateId: roomId },
-    });
-    return stateWithePlayersRelation[0];
+    return (
+      await GameState.find({
+        relations: ['players'],
+        where: { gameStateId: roomId },
+      })
+    )[0];
   }
 
   async getPlayerIndex(clientId: string, roomId: string) {
@@ -59,11 +72,11 @@ export class GameStateService {
     const oneGameState = await this.findPlayersInRoom(roomId);
     const newPlayer = await Players.findOne({ where: { clientId: clientId } });
 
-    if (!oneGameState.listOfPlayers) {
+    if (!oneGameState.seatsAvailable) {
       return console.log('There is no free seats at this table.');
     }
-    newPlayer.playerIndex = oneGameState.listOfPlayers[0];
-    oneGameState.listOfPlayers.splice(0, 1);
+    newPlayer.playerIndex = oneGameState.seatsAvailable[0];
+    oneGameState.seatsAvailable.splice(0, 1);
 
     oneGameState.players = [...oneGameState.players, newPlayer];
 
@@ -80,7 +93,7 @@ export class GameStateService {
         where: { clientId: clientId },
       });
       if (player.playerIndex > -1) {
-        oneGameState.listOfPlayers.push(player.playerIndex);
+        oneGameState.seatsAvailable.push(player.playerIndex);
       }
       let { players } = oneGameState;
       for (let i = 0; i < players.length; i++) {

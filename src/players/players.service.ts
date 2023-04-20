@@ -29,4 +29,8 @@ export class PlayersService {
       console.log('Client does not exist.');
     }
   }
+  async getPlayerIndex(clientId) {
+    const onePlayer = await this.getOnePlayer(clientId);
+    return onePlayer.playerIndex;
+  }
 }

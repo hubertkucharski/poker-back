@@ -27,7 +27,7 @@ export class GameState extends BaseEntity {
     default: '',
   })
   @ArrayUnique()
-  listOfPlayers: number[];
+  seatsAvailable: number[];
 
   @Column({ nullable: true, type: 'smallint' })
   blinds: number;
@@ -36,7 +36,7 @@ export class GameState extends BaseEntity {
   pot: number;
 
   @Column({ nullable: true, type: 'smallint' })
-  activePlayer: 0;
+  activePlayer: number;
 
   @Column({
     type: 'enum',
