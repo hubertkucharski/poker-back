@@ -6,7 +6,7 @@ import {
   ManyToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { GameState } from '../game-flow/game-state.entity';
+import { GameState } from '../game-state/game-state.entity';
 import { Max } from 'class-validator';
 
 @Entity()

@@ -1,13 +1,17 @@
 import {
   WebSocketGateway,
   SubscribeMessage,
-  MessageBody,
   WebSocketServer,
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { GameFlowService } from './game-flow.service';
-import { CreateGameFlowDto } from './dto/create-game-flow.dto';
 import { Server, Socket } from 'socket.io';
+import {
+  ALL_PLAYERS_MAKE_DECISION,
+  CycleManagerService,
+  END_GAME,
+  NO_WINNER,
+} from '../cycle-manager/cycle-manager.service';
 
 export const DEFAULT_ROOM_ID = '953bed85-690a-43bd-825a-b94e9ed4c722';
 
@@ -23,14 +27,33 @@ export interface Client {
 export class GameFlowGateway {
   @WebSocketServer()
   server: Server;
-  constructor(private readonly gameFlowService: GameFlowService) {}
+  constructor(
+    private readonly gameFlowService: GameFlowService,
+    private readonly cycleManagerService: CycleManagerService,
+  ) {}
 
-  async handleConnection(client: Socket) {
+  emitCurrentState() {
+    const currentState = {
+      commonCards: this.cycleManagerService.game.getState().communityCards,
+      pot: this.cycleManagerService.game.getState().pot,
+      checkResult: {},
+      playerWon: NO_WINNER,
+    };
+    this.server.emit('currentState', currentState);
+  }
+
+  emitCheckResult() {
     const getCommonCards = {
-      commonCards: this.gameFlowService.game.getState().communityCards,
+      commonCards: this.cycleManagerService.game.getState().communityCards,
+      pot: this.cycleManagerService.game.getState().pot,
+      playerWon: this.cycleManagerService.playerWon(DEFAULT_ROOM_ID),
+      checkResult: this.cycleManagerService.game.checkResult(),
     };
     this.server.emit('currentState', getCommonCards);
+  }
 
+  async handleConnection(client: Socket) {
+    this.emitCurrentState();
     const playerIndexOnTable = await this.gameFlowService.playerJoin(
       client.id,
       DEFAULT_ROOM_ID,
@@ -40,27 +63,27 @@ export class GameFlowGateway {
   }
 
   @SubscribeMessage('createGameFlow')
-  async create(
-    @MessageBody() createGameFlowDto: CreateGameFlowDto,
-    @ConnectedSocket() client: Socket,
-  ) {
+  async create(@ConnectedSocket() client: Socket) {
     client.join(DEFAULT_ROOM_ID);
 
     await this.gameFlowService.create(DEFAULT_ROOM_ID);
 
-    const allPlayers = await this.gameFlowService.getPlayersInRoom(
+    const allPlayers = await this.cycleManagerService.getPlayersInRoom(
       DEFAULT_ROOM_ID,
     );
 
-    if (allPlayers.length > 1) {
-      for (const player of allPlayers) {
-        const playerHand = await this.gameFlowService.getPlayerCards(
-          player.clientId,
-          DEFAULT_ROOM_ID,
-        );
-        this.server.to(player.clientId).emit('initRound', playerHand);
-      }
-    } else client.emit('initRound', ['', '']);
+    if (allPlayers.length <= 1) {
+      client.emit('initRound', ['', '']);
+      return;
+    }
+
+    for (const player of allPlayers) {
+      const playerHand = await this.cycleManagerService.getPlayerCards(
+        player.clientId,
+        DEFAULT_ROOM_ID,
+      );
+      this.server.to(player.clientId).emit('initRound', playerHand);
+    }
   }
 
   async handleDisconnect(client: Socket) {
@@ -68,9 +91,28 @@ export class GameFlowGateway {
     console.log('Server disconnected');
   }
 
-  @SubscribeMessage('endRound')
-  endRound() {
-    const commonCards = this.gameFlowService.endRound();
-    this.server.emit('endRound', commonCards);
+  @SubscribeMessage('check')
+  async check(@ConnectedSocket() client: Socket) {
+    this.cycleManagerService.check(client.id, DEFAULT_ROOM_ID);
+    this.server.emit('check', 'check - OK');
+  }
+
+  @SubscribeMessage('call')
+  async call(@ConnectedSocket() client: Socket) {
+    const newGameState = this.cycleManagerService.call(
+      client.id,
+      DEFAULT_ROOM_ID,
+    );
+    console.log(await newGameState, 'newGameState game flow gateway');
+    if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
+      this.emitCurrentState();
+    }
+    if ((await newGameState) === END_GAME) {
+      this.emitCheckResult();
+    }
+    else {
+      this.emitCurrentState();
+      this.server.emit('call', newGameState);
+    }
   }
 }
