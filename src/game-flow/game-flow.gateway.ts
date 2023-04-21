@@ -42,14 +42,14 @@ export class GameFlowGateway {
     this.server.emit('currentState', currentState);
   }
 
-  emitCheckResult() {
-    const getCommonCards = {
+  async emitCheckResult() {
+    const finalResult = {
       commonCards: this.cycleManagerService.game.getState().communityCards,
       pot: this.cycleManagerService.game.getState().pot,
-      playerWon: this.cycleManagerService.playerWon(DEFAULT_ROOM_ID),
+      playerWon: await this.cycleManagerService.playerWon(DEFAULT_ROOM_ID),
       checkResult: this.cycleManagerService.game.checkResult(),
     };
-    this.server.emit('currentState', getCommonCards);
+    this.server.emit('currentState', finalResult);
   }
 
   async handleConnection(client: Socket) {
@@ -58,7 +58,6 @@ export class GameFlowGateway {
       client.id,
       DEFAULT_ROOM_ID,
     );
-
     client.emit('joinGame', playerIndexOnTable);
   }
 
@@ -109,8 +108,7 @@ export class GameFlowGateway {
     }
     if ((await newGameState) === END_GAME) {
       this.emitCheckResult();
-    }
-    else {
+    } else {
       this.emitCurrentState();
       this.server.emit('call', newGameState);
     }
