@@ -89,7 +89,6 @@ export class CycleManagerService {
   async playerWon(roomId): Promise<number> {
     const winnerIndex = this.game.checkResult().index;
     const playersInRoom = await this.getPlayersInRoom(roomId);
-    console.log(await playersInRoom[winnerIndex].playerIndex);
-    return 0;
+    return await playersInRoom[winnerIndex].playerIndex;
   }
 }
