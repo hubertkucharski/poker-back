@@ -32,22 +32,29 @@ export class GameFlowGateway {
     private readonly cycleManagerService: CycleManagerService,
   ) {}
 
-  emitCurrentState() {
+  async emitCurrentState() {
+    const { communityCards, pot } = this.cycleManagerService.game.getState();
     const currentState = {
-      commonCards: this.cycleManagerService.game.getState().communityCards,
-      pot: this.cycleManagerService.game.getState().pot,
-      checkResult: {},
+      commonCards: communityCards,
+      pot: pot,
+      checkResult: '',
       playerWon: NO_WINNER,
+      activePlayer: await this.cycleManagerService.getActivePlayer(
+        DEFAULT_ROOM_ID,
+      ),
     };
     this.server.emit('currentState', currentState);
   }
 
   async emitCheckResult() {
+    const { finalCommonCards, pot, playerIndex, winningHand } =
+      await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
+
     const finalResult = {
-      commonCards: this.cycleManagerService.game.getState().communityCards,
-      pot: this.cycleManagerService.game.getState().pot,
-      playerWon: await this.cycleManagerService.playerWon(DEFAULT_ROOM_ID),
-      checkResult: this.cycleManagerService.game.checkResult(),
+      commonCards: finalCommonCards,
+      pot: pot,
+      playerWon: playerIndex,
+      checkResult: winningHand,
     };
     this.server.emit('currentState', finalResult);
   }
@@ -63,6 +70,7 @@ export class GameFlowGateway {
 
   @SubscribeMessage('createGameFlow')
   async create(@ConnectedSocket() client: Socket) {
+    await this.emitCurrentState();
     client.join(DEFAULT_ROOM_ID);
 
     await this.gameFlowService.create(DEFAULT_ROOM_ID);
@@ -92,7 +100,7 @@ export class GameFlowGateway {
 
   @SubscribeMessage('check')
   async check(@ConnectedSocket() client: Socket) {
-    this.cycleManagerService.check(client.id, DEFAULT_ROOM_ID);
+    await this.cycleManagerService.check(client.id, DEFAULT_ROOM_ID);
     this.server.emit('check', 'check - OK');
   }
 
@@ -102,15 +110,15 @@ export class GameFlowGateway {
       client.id,
       DEFAULT_ROOM_ID,
     );
-    console.log(await newGameState, 'newGameState game flow gateway');
     if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
-      this.emitCurrentState();
+      await this.emitCurrentState();
+      return;
     }
     if ((await newGameState) === END_GAME) {
-      this.emitCheckResult();
-    } else {
-      this.emitCurrentState();
-      this.server.emit('call', newGameState);
+      await this.emitCheckResult();
+      return;
     }
+    await this.emitCurrentState();
+    this.server.emit('call', newGameState);
   }
 }
