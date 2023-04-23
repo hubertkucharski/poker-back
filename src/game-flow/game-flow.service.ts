@@ -34,12 +34,4 @@ export class GameFlowService {
   async getState(roomId: string) {
     return await this.gameStateService.getOneState(roomId);
   }
-
-  async create(roomId: string) {
-    return this.cycleManagerService.startRound(roomId);
-  }
-
-  async getPlayerCards(clientId: string, roomId: string) {
-    return this.cycleManagerService.getPlayerCards(clientId, roomId);
-  }
 }

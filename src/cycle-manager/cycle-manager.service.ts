@@ -37,7 +37,7 @@ export class CycleManagerService {
     );
     this.game.startRound();
 
-    return this.game.getState().players.map((hands) => hands.hand);
+    return playersInRoom;
   }
 
   async check(clientId, roomId) {
@@ -72,12 +72,8 @@ export class CycleManagerService {
     return this.game.getState().players[playerIndex].availableActions;
   }
 
-  async getPlayerCards(clientId, roomId) {
-    const indexBe = await this.gameStateService.getPlayerIndexInGame(
-      clientId,
-      roomId,
-    );
-    return this.game.getState().players[indexBe].hand;
+  async getPlayerCards(indexInGame) {
+    return this.game.getState().players[indexInGame].hand;
   }
 
   async getPlayersInRoom(roomId: string) {

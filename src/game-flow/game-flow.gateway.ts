@@ -60,7 +60,7 @@ export class GameFlowGateway {
   }
 
   async handleConnection(client: Socket) {
-    this.emitCurrentState();
+    await this.emitCurrentState();
     const playerIndexOnTable = await this.gameFlowService.playerJoin(
       client.id,
       DEFAULT_ROOM_ID,
@@ -73,9 +73,7 @@ export class GameFlowGateway {
     await this.emitCurrentState();
     client.join(DEFAULT_ROOM_ID);
 
-    await this.gameFlowService.create(DEFAULT_ROOM_ID);
-
-    const allPlayers = await this.cycleManagerService.getPlayersInRoom(
+    const allPlayers = await this.cycleManagerService.startRound(
       DEFAULT_ROOM_ID,
     );
 
@@ -83,12 +81,11 @@ export class GameFlowGateway {
       client.emit('initRound', ['', '']);
       return;
     }
-
     for (const player of allPlayers) {
       const playerHand = await this.cycleManagerService.getPlayerCards(
-        player.clientId,
-        DEFAULT_ROOM_ID,
+        player.playerIndexInGame,
       );
+
       this.server.to(player.clientId).emit('initRound', playerHand);
     }
   }
@@ -110,10 +107,7 @@ export class GameFlowGateway {
       client.id,
       DEFAULT_ROOM_ID,
     );
-    if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
-      await this.emitCurrentState();
-      return;
-    }
+
     if ((await newGameState) === END_GAME) {
       await this.emitCheckResult();
       return;
