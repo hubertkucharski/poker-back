@@ -15,10 +15,8 @@ import {
 
 export const DEFAULT_ROOM_ID = '953bed85-690a-43bd-825a-b94e9ed4c722';
 
-export interface Client {
-  clientId: string;
-  playerBalance: number;
-}
+const EMPTY_HAND = '';
+
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -47,7 +45,7 @@ export class GameFlowGateway {
   }
 
   async emitCheckResult() {
-    const { finalCommonCards, pot, playerIndex, winningHand } =
+    const { finalCommonCards, pot, playerIndex, winningHand, activePlayer } =
       await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
 
     const finalResult = {
@@ -55,6 +53,7 @@ export class GameFlowGateway {
       pot: pot,
       playerWon: playerIndex,
       checkResult: winningHand,
+      activePlayer: activePlayer,
     };
     this.server.emit('currentState', finalResult);
   }
@@ -70,7 +69,6 @@ export class GameFlowGateway {
 
   @SubscribeMessage('createGameFlow')
   async create(@ConnectedSocket() client: Socket) {
-    await this.emitCurrentState();
     client.join(DEFAULT_ROOM_ID);
 
     const allPlayers = await this.cycleManagerService.startRound(
@@ -78,13 +76,14 @@ export class GameFlowGateway {
     );
 
     if (allPlayers.length <= 1) {
-      client.emit('initRound', ['', '']);
+      client.emit('initRound', EMPTY_HAND);
       return;
     }
     for (const player of allPlayers) {
       const playerHand = await this.cycleManagerService.getPlayerCards(
         player.playerIndexInGame,
       );
+      await this.emitCurrentState();
 
       this.server.to(player.clientId).emit('initRound', playerHand);
     }
@@ -114,5 +113,19 @@ export class GameFlowGateway {
     }
     await this.emitCurrentState();
     this.server.emit('call', newGameState);
+  }
+
+  @SubscribeMessage('fold')
+  async fold(@ConnectedSocket() client: Socket) {
+    const newGameState = await this.cycleManagerService.fold(
+      client.id,
+      DEFAULT_ROOM_ID,
+    );
+    if (newGameState === END_GAME) {
+      await this.emitCheckResult();
+      return;
+    }
+    await this.emitCurrentState();
+    this.server.emit('fold', newGameState);
   }
 }

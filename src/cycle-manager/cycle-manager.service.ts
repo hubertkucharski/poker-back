@@ -48,7 +48,17 @@ export class CycleManagerService {
     this.game.check(playerIndexInGame);
   }
 
-  fold(clientId, roomId) {}
+  async fold(clientId, roomId) {
+    const playerIndexInGame = await this.gameStateService.getPlayerIndexInGame(
+      clientId,
+      roomId,
+    );
+    this.game.fold(playerIndexInGame);
+
+    if (this.isAllPlayersFolded()) return END_GAME;
+
+    return await this.nextActivePlayer(roomId);
+  }
 
   async call(clientId, roomId) {
     const playerIndexInGame = await this.gameStateService.getPlayerIndexInGame(
@@ -56,6 +66,23 @@ export class CycleManagerService {
       roomId,
     );
     this.game.call(playerIndexInGame);
+
+    return this.nextActivePlayer(roomId);
+  }
+
+  availableAction(playerIndex: number) {
+    return this.getPlayersFromGameState()[playerIndex].availableActions;
+  }
+
+  async getPlayerCards(indexInGame) {
+    return this.getPlayersFromGameState()[indexInGame].hand;
+  }
+
+  async getPlayersInRoom(roomId: string) {
+    return (await this.gameStateService.findPlayersInRoom(roomId)).players;
+  }
+
+  async nextActivePlayer(roomId: string) {
     const nextActivePlayer = await this.nextPlayer(roomId);
 
     if (nextActivePlayer !== ALL_PLAYERS_MAKE_DECISION) {
@@ -68,20 +95,23 @@ export class CycleManagerService {
     return ALL_PLAYERS_MAKE_DECISION;
   }
 
-  availableAction(playerIndex: number) {
-    return this.game.getState().players[playerIndex].availableActions;
+  getPlayersFromGameState() {
+    return this.game.getState().players;
   }
 
-  async getPlayerCards(indexInGame) {
-    return this.game.getState().players[indexInGame].hand;
+  lastNotFoldedPlayerIndex() {
+    return this.getPlayersFromGameState().findIndex((player) => !player.folded);
   }
 
-  async getPlayersInRoom(roomId: string) {
-    return (await this.gameStateService.findPlayersInRoom(roomId)).players;
+  isAllPlayersFolded() {
+    return (
+      this.lastNotFoldedPlayerIndex() !== -1 &&
+      this.getPlayersFromGameState().filter((player) => !player.folded).length === 1
+    );
   }
 
   async nextPlayer(roomId: string) {
-    const players = this.game.getState().players;
+    const players = this.getPlayersFromGameState();
     for (let i = 0; i < players.length; i++) {
       const player = players[i];
 
@@ -97,16 +127,25 @@ export class CycleManagerService {
     winningHand: string;
     finalCommonCards: Card[];
     pot: number;
+    activePlayer: number;
   }> {
+    await this.gameStateService.setActivePlayer(
+      ALL_PLAYERS_MAKE_DECISION,
+      roomId,
+    );
     const finalCommonCards = this.game.getState().communityCards;
     const pot = this.game.getState().pot;
-    const checkResult = this.game.checkResult();
+    const isAllPlayersFolded = this.isAllPlayersFolded();
+    const checkResult = isAllPlayersFolded
+      ? { index: this.lastNotFoldedPlayerIndex(), name: '' }
+      : this.game.checkResult();
 
     return {
       playerIndex: await this.getPlayerIndexAtTable(checkResult.index, roomId),
       winningHand: checkResult.name,
       finalCommonCards: finalCommonCards,
       pot: pot,
+      activePlayer: END_GAME,
     };
   }
 
