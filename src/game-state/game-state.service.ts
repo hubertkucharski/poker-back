@@ -30,12 +30,6 @@ export class GameStateService {
     return newGameState;
   }
 
-  async updateState(roomId: string) {
-    const oneGameState = await this.getOneState(roomId);
-    await oneGameState.save();
-    return oneGameState;
-  }
-
   async setActivePlayer(activePlayerIndex: number, roomId: string) {
     let oneGameState = await this.getOneState(roomId);
     oneGameState.activePlayer = activePlayerIndex;
@@ -107,5 +101,14 @@ export class GameStateService {
     } catch (e) {
       console.log('Error occurs: ', e);
     }
+  }
+  async setCurrentDecision(clientId, roomId, currentDecision) {
+    const oneGameState = await this.findPlayersInRoom(roomId);
+    const player = oneGameState.players.find(
+      (player) => player.clientId === clientId,
+    );
+    player.currentDecision = currentDecision;
+
+    await player.save();
   }
 }

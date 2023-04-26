@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { GameStateService } from '../game-state/game-state.service';
 import { PlayersService } from '../players/players.service';
-import { Players } from '../players/players.entity';
 import { CycleManagerService } from '../cycle-manager/cycle-manager.service';
 
 @Injectable()
@@ -29,9 +28,5 @@ export class GameFlowService {
   async playerLeave(clientId, roomId) {
     await this.gameStateService.removePlayerFromTable(clientId, roomId);
     await this.playersService.removePlayerFromRoom(clientId);
-  }
-
-  async getState(roomId: string) {
-    return await this.gameStateService.getOneState(roomId);
   }
 }

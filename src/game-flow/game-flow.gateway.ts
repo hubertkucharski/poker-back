@@ -3,6 +3,7 @@ import {
   SubscribeMessage,
   WebSocketServer,
   ConnectedSocket,
+  MessageBody,
 } from '@nestjs/websockets';
 import { GameFlowService } from './game-flow.service';
 import { Server, Socket } from 'socket.io';
@@ -12,6 +13,7 @@ import {
   END_GAME,
   NO_WINNER,
 } from '../cycle-manager/cycle-manager.service';
+import { GameState } from '../game-state/game-state.entity';
 
 export const DEFAULT_ROOM_ID = '953bed85-690a-43bd-825a-b94e9ed4c722';
 
@@ -127,5 +129,22 @@ export class GameFlowGateway {
     }
     await this.emitCurrentState();
     this.server.emit('fold', newGameState);
+  }
+
+  @SubscribeMessage('raise')
+  async raise(@ConnectedSocket() client: Socket, @MessageBody() value: number) {
+    const newGameState = await this.cycleManagerService.raise(
+      client.id,
+      DEFAULT_ROOM_ID,
+      value,
+    );
+    try {
+      if (newGameState instanceof GameState) {
+        await this.emitCurrentState();
+        this.server.emit('call', newGameState);
+      }
+    } catch {
+      console.error('Error in raise gateway.');
+    }
   }
 }
