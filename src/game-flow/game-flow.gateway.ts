@@ -15,10 +15,8 @@ import {
 
 export const DEFAULT_ROOM_ID = '953bed85-690a-43bd-825a-b94e9ed4c722';
 
-export interface Client {
-  clientId: string;
-  playerBalance: number;
-}
+const EMPTY_HAND = '';
+
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -32,28 +30,36 @@ export class GameFlowGateway {
     private readonly cycleManagerService: CycleManagerService,
   ) {}
 
-  emitCurrentState() {
+  async emitCurrentState() {
+    const { communityCards, pot } = this.cycleManagerService.game.getState();
     const currentState = {
-      commonCards: this.cycleManagerService.game.getState().communityCards,
-      pot: this.cycleManagerService.game.getState().pot,
-      checkResult: {},
+      commonCards: communityCards,
+      pot: pot,
+      checkResult: '',
       playerWon: NO_WINNER,
+      activePlayer: await this.cycleManagerService.getActivePlayer(
+        DEFAULT_ROOM_ID,
+      ),
     };
     this.server.emit('currentState', currentState);
   }
 
   async emitCheckResult() {
+    const { finalCommonCards, pot, playerIndex, winningHand, activePlayer } =
+      await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
+
     const finalResult = {
-      commonCards: this.cycleManagerService.game.getState().communityCards,
-      pot: this.cycleManagerService.game.getState().pot,
-      playerWon: await this.cycleManagerService.playerWon(DEFAULT_ROOM_ID),
-      checkResult: this.cycleManagerService.game.checkResult(),
+      commonCards: finalCommonCards,
+      pot: pot,
+      playerWon: playerIndex,
+      checkResult: winningHand,
+      activePlayer: activePlayer,
     };
     this.server.emit('currentState', finalResult);
   }
 
   async handleConnection(client: Socket) {
-    this.emitCurrentState();
+    await this.emitCurrentState();
     const playerIndexOnTable = await this.gameFlowService.playerJoin(
       client.id,
       DEFAULT_ROOM_ID,
@@ -65,22 +71,20 @@ export class GameFlowGateway {
   async create(@ConnectedSocket() client: Socket) {
     client.join(DEFAULT_ROOM_ID);
 
-    await this.gameFlowService.create(DEFAULT_ROOM_ID);
-
-    const allPlayers = await this.cycleManagerService.getPlayersInRoom(
+    const allPlayers = await this.cycleManagerService.startRound(
       DEFAULT_ROOM_ID,
     );
 
     if (allPlayers.length <= 1) {
-      client.emit('initRound', ['', '']);
+      client.emit('initRound', EMPTY_HAND);
       return;
     }
-
     for (const player of allPlayers) {
       const playerHand = await this.cycleManagerService.getPlayerCards(
-        player.clientId,
-        DEFAULT_ROOM_ID,
+        player.playerIndexInGame,
       );
+      await this.emitCurrentState();
+
       this.server.to(player.clientId).emit('initRound', playerHand);
     }
   }
@@ -92,7 +96,7 @@ export class GameFlowGateway {
 
   @SubscribeMessage('check')
   async check(@ConnectedSocket() client: Socket) {
-    this.cycleManagerService.check(client.id, DEFAULT_ROOM_ID);
+    await this.cycleManagerService.check(client.id, DEFAULT_ROOM_ID);
     this.server.emit('check', 'check - OK');
   }
 
@@ -102,15 +106,26 @@ export class GameFlowGateway {
       client.id,
       DEFAULT_ROOM_ID,
     );
-    console.log(await newGameState, 'newGameState game flow gateway');
-    if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
-      this.emitCurrentState();
-    }
+
     if ((await newGameState) === END_GAME) {
-      this.emitCheckResult();
-    } else {
-      this.emitCurrentState();
-      this.server.emit('call', newGameState);
+      await this.emitCheckResult();
+      return;
     }
+    await this.emitCurrentState();
+    this.server.emit('call', newGameState);
+  }
+
+  @SubscribeMessage('fold')
+  async fold(@ConnectedSocket() client: Socket) {
+    const newGameState = await this.cycleManagerService.fold(
+      client.id,
+      DEFAULT_ROOM_ID,
+    );
+    if (newGameState === END_GAME) {
+      await this.emitCheckResult();
+      return;
+    }
+    await this.emitCurrentState();
+    this.server.emit('fold', newGameState);
   }
 }

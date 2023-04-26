@@ -16,7 +16,7 @@ export class GameFlowService {
   async playerJoin(clientId: string, roomId: string) {
     if (await this.gameStateService.isPlayerAtTable(clientId, roomId)) {
       console.log('You are already sitting at the table');
-      const player = await Players.findOne({ where: { clientId: clientId } });
+      const player = await this.playersService.getOnePlayer(clientId);
 
       return player.playerIndex;
     } else {
@@ -33,13 +33,5 @@ export class GameFlowService {
 
   async getState(roomId: string) {
     return await this.gameStateService.getOneState(roomId);
-  }
-
-  async create(roomId: string) {
-    return this.cycleManagerService.startRound(roomId);
-  }
-
-  async getPlayerCards(clientId: string, roomId: string) {
-    return this.cycleManagerService.getPlayerCards(clientId, roomId);
   }
 }

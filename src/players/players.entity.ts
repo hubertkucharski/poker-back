@@ -24,6 +24,10 @@ export class Players extends BaseEntity {
   @Max(6)
   playerIndex: number;
 
+  @Column({ nullable: false, type: 'smallint', default: -1 })
+  @Max(6)
+  playerIndexInGame: number;
+
   @ManyToMany(() => GameState, (gameState) => gameState.players)
   @JoinTable()
   gameStates: GameState[];

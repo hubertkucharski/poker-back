@@ -61,11 +61,12 @@ export class GameStateService {
     )[0];
   }
 
-  async getPlayerIndex(clientId: string, roomId: string) {
+  async getPlayerIndexInGame(clientId: string, roomId: string) {
     const oneGameState = await this.findPlayersInRoom(roomId);
-    return oneGameState.players.findIndex(
+    const player = oneGameState.players.find(
       (player) => player.clientId === clientId,
     );
+    return player.playerIndexInGame;
   }
 
   async addPlayerToTable(clientId: string, roomId: string) {
