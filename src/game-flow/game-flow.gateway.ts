@@ -34,6 +34,7 @@ export class GameFlowGateway {
 
   async emitCurrentState() {
     const { communityCards, pot } = this.cycleManagerService.game.getState();
+
     const currentState = {
       commonCards: communityCards,
       pot: pot,
@@ -42,13 +43,24 @@ export class GameFlowGateway {
       activePlayer: await this.cycleManagerService.getActivePlayer(
         DEFAULT_ROOM_ID,
       ),
+      indexAndBalance: await this.cycleManagerService.getPlayersIndexAndBalance(
+        DEFAULT_ROOM_ID,
+      ),
+      players: [],
     };
+
     this.server.emit('currentState', currentState);
   }
 
   async emitCheckResult() {
-    const { finalCommonCards, pot, playerIndex, winningHand, activePlayer } =
-      await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
+    const {
+      finalCommonCards,
+      pot,
+      playerIndex,
+      winningHand,
+      activePlayer,
+      players,
+    } = await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
 
     const finalResult = {
       commonCards: finalCommonCards,
@@ -56,17 +68,21 @@ export class GameFlowGateway {
       playerWon: playerIndex,
       checkResult: winningHand,
       activePlayer: activePlayer,
+      indexAndBalance: await this.cycleManagerService.getPlayersIndexAndBalance(
+        DEFAULT_ROOM_ID,
+      ),
+      players: players,
     };
     this.server.emit('currentState', finalResult);
   }
 
   async handleConnection(client: Socket) {
-    await this.emitCurrentState();
-    const playerIndexOnTable = await this.gameFlowService.playerJoin(
+    const playerIndexAtTableAndBalance = await this.gameFlowService.playerJoin(
       client.id,
       DEFAULT_ROOM_ID,
     );
-    client.emit('joinGame', playerIndexOnTable);
+    await this.emitCurrentState();
+    client.emit('joinGame', playerIndexAtTableAndBalance);
   }
 
   @SubscribeMessage('createGameFlow')
@@ -87,7 +103,10 @@ export class GameFlowGateway {
       );
       await this.emitCurrentState();
 
-      this.server.to(player.clientId).emit('initRound', playerHand);
+      this.server.to(player.clientId).emit('initRound', {
+        playerIndex: player.playerIndex,
+        playerHand: playerHand,
+      });
     }
   }
 

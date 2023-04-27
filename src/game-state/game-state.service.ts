@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { GameState } from './game-state.entity';
 import { Players } from '../players/players.entity';
+import { isLogLevelEnabled } from '@nestjs/common/services/utils';
 
 const DEFAULT_BLINDS = 5;
 const DEFAULT_NUMBER_OF_SEATS = 6;
@@ -78,9 +79,23 @@ export class GameStateService {
     await oneGameState.save();
     await newPlayer.save();
 
-    return newPlayer.playerIndex;
+    return this.getPlayersIndexAndBalance(roomId);
   }
+  async getPlayersIndexAndBalance(
+    roomId,
+  ): Promise<{ playerIndex: number; balance: number }[]> {
+    const players = await this.findPlayersInRoom(roomId);
 
+    let playersIndexAndBalance = [];
+    players.players.map((player) =>
+      playersIndexAndBalance.push({
+        playerIndex: player.playerIndex,
+        balance: player.balance,
+      }),
+    );
+
+    return playersIndexAndBalance;
+  }
   async removePlayerFromTable(clientId: string, roomId: string) {
     const oneGameState = await this.findPlayersInRoom(roomId);
     try {

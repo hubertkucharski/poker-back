@@ -3,7 +3,7 @@ import { Card, Game } from 'holdem-poker';
 import { GameStateService } from '../game-state/game-state.service';
 import { currentDecision } from '../players/players.entity';
 
-const INITIAL_BET = 10;
+const INITIAL_BET = 0;
 const DEFAULT_PLAYER_MONEY = 0;
 const PLAYER_CONFIG = [DEFAULT_PLAYER_MONEY, DEFAULT_PLAYER_MONEY];
 export const ALL_PLAYERS_MAKE_DECISION = -1;
@@ -20,8 +20,13 @@ export class CycleManagerService {
   async nextRound(roomId) {
     const playersInRoom = await this.getPlayersInRoom(roomId);
     playersInRoom.map((player) => {
-      player.currentDecision = currentDecision.NOT_DECIDED;
-      player.save();
+      if (
+        player.currentDecision !== currentDecision.NOT_PLAYING &&
+        player.currentDecision !== currentDecision.FOLD
+      ) {
+        player.currentDecision = currentDecision.NOT_DECIDED;
+        player.save();
+      }
     });
     this.game.endRound();
     this.game.startRound();
@@ -106,6 +111,9 @@ export class CycleManagerService {
   async getPlayersInRoom(roomId: string) {
     return (await this.gameStateService.findPlayersInRoom(roomId)).players;
   }
+  async getPlayersIndexAndBalance(roomId: string) {
+    return await this.gameStateService.getPlayersIndexAndBalance(roomId);
+  }
 
   async nextActivePlayer(roomId: string) {
     const nextActivePlayer = await this.nextPlayer(roomId);
@@ -140,7 +148,10 @@ export class CycleManagerService {
     for (let i = 0; i < players.length; i++) {
       const player = players[i];
 
-      if (player.currentDecision !== currentDecision.FOLD) {
+      if (
+        player.currentDecision !== currentDecision.FOLD &&
+        player.currentDecision !== currentDecision.NOT_PLAYING
+      ) {
         await this.gameStateService.setCurrentDecision(
           player.clientId,
           roomId,
@@ -182,12 +193,14 @@ export class CycleManagerService {
     finalCommonCards: Card[];
     pot: number;
     activePlayer: number;
+    players: Card[];
   }> {
     await this.gameStateService.setActivePlayer(
       ALL_PLAYERS_MAKE_DECISION,
       roomId,
     );
     const finalCommonCards = this.game.getState().communityCards;
+    const players = this.game.getState().players;
     const pot = this.game.getState().pot;
     const isAllPlayersFolded = this.isAllPlayersFolded();
     const checkResult = isAllPlayersFolded
@@ -200,6 +213,7 @@ export class CycleManagerService {
       finalCommonCards: finalCommonCards,
       pot: pot,
       activePlayer: END_GAME,
+      players: players,
     };
   }
 
