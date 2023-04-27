@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Card, Game } from 'holdem-poker';
 import { GameStateService } from '../game-state/game-state.service';
+import { currentDecision } from '../players/players.entity';
 
-const INITIAL_BET = 10;
+const INITIAL_BET = 0;
 const DEFAULT_PLAYER_MONEY = 0;
 const PLAYER_CONFIG = [DEFAULT_PLAYER_MONEY, DEFAULT_PLAYER_MONEY];
 export const ALL_PLAYERS_MAKE_DECISION = -1;
@@ -16,7 +17,17 @@ export class CycleManagerService {
   ) {}
   game: any = new Game(PLAYER_CONFIG, INITIAL_BET);
 
-  nextRound() {
+  async nextRound(roomId) {
+    const playersInRoom = await this.getPlayersInRoom(roomId);
+    playersInRoom.map((player) => {
+      if (
+        player.currentDecision !== currentDecision.NOT_PLAYING &&
+        player.currentDecision !== currentDecision.FOLD
+      ) {
+        player.currentDecision = currentDecision.NOT_DECIDED;
+        player.save();
+      }
+    });
     this.game.endRound();
     this.game.startRound();
   }
@@ -30,6 +41,7 @@ export class CycleManagerService {
     this.game.newRound(
       playersInRoom.map((player, index) => {
         player.playerIndexInGame = index;
+        player.currentDecision = currentDecision.NOT_DECIDED;
         player.save();
         return player.balance;
       }),
@@ -54,7 +66,11 @@ export class CycleManagerService {
       roomId,
     );
     this.game.fold(playerIndexInGame);
-
+    await this.gameStateService.setCurrentDecision(
+      clientId,
+      roomId,
+      currentDecision.FOLD,
+    );
     if (this.isAllPlayersFolded()) return END_GAME;
 
     return await this.nextActivePlayer(roomId);
@@ -66,8 +82,22 @@ export class CycleManagerService {
       roomId,
     );
     this.game.call(playerIndexInGame);
-
+    await this.gameStateService.setCurrentDecision(
+      clientId,
+      roomId,
+      currentDecision.CALL,
+    );
     return this.nextActivePlayer(roomId);
+  }
+
+  async raise(clientId, roomId, value) {
+    const playerIndexInGame = await this.removePreviousPlayersActionIfNotFolded(
+      clientId,
+      roomId,
+    );
+    this.game.raise(playerIndexInGame, value);
+
+    return await this.nextActivePlayer(roomId);
   }
 
   availableAction(playerIndex: number) {
@@ -81,6 +111,9 @@ export class CycleManagerService {
   async getPlayersInRoom(roomId: string) {
     return (await this.gameStateService.findPlayersInRoom(roomId)).players;
   }
+  async getPlayersIndexAndBalance(roomId: string) {
+    return await this.gameStateService.getPlayersIndexAndBalance(roomId);
+  }
 
   async nextActivePlayer(roomId: string) {
     const nextActivePlayer = await this.nextPlayer(roomId);
@@ -91,7 +124,7 @@ export class CycleManagerService {
     if (this.game.getState().communityCards.length === 5) {
       return END_GAME;
     }
-    this.nextRound();
+    await this.nextRound(roomId);
     return ALL_PLAYERS_MAKE_DECISION;
   }
 
@@ -106,17 +139,49 @@ export class CycleManagerService {
   isAllPlayersFolded() {
     return (
       this.lastNotFoldedPlayerIndex() !== -1 &&
-      this.getPlayersFromGameState().filter((player) => !player.folded).length === 1
+      this.getPlayersFromGameState().filter((player) => !player.folded)
+        .length === 1
     );
   }
-
-  async nextPlayer(roomId: string) {
-    const players = this.getPlayersFromGameState();
+  async removePreviousPlayersActionIfNotFolded(clientId, roomId) {
+    const players = await this.getPlayersInRoom(roomId);
     for (let i = 0; i < players.length; i++) {
       const player = players[i];
 
-      if (!player.folded && player.currentDecision === '' && player.money > 0) {
-        return this.getPlayerIndexAtTable(i, roomId);
+      if (
+        player.currentDecision !== currentDecision.FOLD &&
+        player.currentDecision !== currentDecision.NOT_PLAYING
+      ) {
+        await this.gameStateService.setCurrentDecision(
+          player.clientId,
+          roomId,
+          currentDecision.NOT_DECIDED,
+        );
+      }
+      if (player.clientId === clientId) {
+        await this.gameStateService.setCurrentDecision(
+          clientId,
+          roomId,
+          currentDecision.RAISE,
+        );
+      }
+    }
+    const round = this.game.round;
+    for (let i = 0; i < round.length; i++) {
+      let player = round[i];
+      if (player.decision !== 'raise' && player.decision !== 'fold')
+        player.decision = '';
+    }
+    return this.gameStateService.getPlayerIndexInGame(clientId, roomId);
+  }
+
+  async nextPlayer(roomId: string) {
+    const players = await this.getPlayersInRoom(roomId);
+    for (let i = 0; i < players.length; i++) {
+      const player = players[i];
+
+      if (player.currentDecision === currentDecision.NOT_DECIDED) {
+        return player.playerIndex;
       }
     }
     return ALL_PLAYERS_MAKE_DECISION;
@@ -128,12 +193,14 @@ export class CycleManagerService {
     finalCommonCards: Card[];
     pot: number;
     activePlayer: number;
+    players: Card[];
   }> {
     await this.gameStateService.setActivePlayer(
       ALL_PLAYERS_MAKE_DECISION,
       roomId,
     );
     const finalCommonCards = this.game.getState().communityCards;
+    const players = this.game.getState().players;
     const pot = this.game.getState().pot;
     const isAllPlayersFolded = this.isAllPlayersFolded();
     const checkResult = isAllPlayersFolded
@@ -146,6 +213,7 @@ export class CycleManagerService {
       finalCommonCards: finalCommonCards,
       pot: pot,
       activePlayer: END_GAME,
+      players: players,
     };
   }
 

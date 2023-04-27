@@ -6,8 +6,16 @@ import {
   ManyToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { GameState } from '../game-state/game-state.entity';
+import { GameState, round } from '../game-state/game-state.entity';
 import { Max } from 'class-validator';
+
+export enum currentDecision {
+  NOT_DECIDED = 'not decided',
+  FOLD = 'fold',
+  CALL = 'call',
+  RAISE = 'raise',
+  NOT_PLAYING = 'not playing',
+}
 
 @Entity()
 export class Players extends BaseEntity {
@@ -27,6 +35,13 @@ export class Players extends BaseEntity {
   @Column({ nullable: false, type: 'smallint', default: -1 })
   @Max(6)
   playerIndexInGame: number;
+
+  @Column({
+    type: 'enum',
+    enum: currentDecision,
+    default: currentDecision.NOT_PLAYING,
+  })
+  currentDecision;
 
   @ManyToMany(() => GameState, (gameState) => gameState.players)
   @JoinTable()

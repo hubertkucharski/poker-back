@@ -3,6 +3,7 @@ import {
   SubscribeMessage,
   WebSocketServer,
   ConnectedSocket,
+  MessageBody,
 } from '@nestjs/websockets';
 import { GameFlowService } from './game-flow.service';
 import { Server, Socket } from 'socket.io';
@@ -12,6 +13,7 @@ import {
   END_GAME,
   NO_WINNER,
 } from '../cycle-manager/cycle-manager.service';
+import { GameState } from '../game-state/game-state.entity';
 
 export const DEFAULT_ROOM_ID = '953bed85-690a-43bd-825a-b94e9ed4c722';
 
@@ -32,6 +34,7 @@ export class GameFlowGateway {
 
   async emitCurrentState() {
     const { communityCards, pot } = this.cycleManagerService.game.getState();
+
     const currentState = {
       commonCards: communityCards,
       pot: pot,
@@ -40,13 +43,24 @@ export class GameFlowGateway {
       activePlayer: await this.cycleManagerService.getActivePlayer(
         DEFAULT_ROOM_ID,
       ),
+      indexAndBalance: await this.cycleManagerService.getPlayersIndexAndBalance(
+        DEFAULT_ROOM_ID,
+      ),
+      players: [],
     };
+
     this.server.emit('currentState', currentState);
   }
 
   async emitCheckResult() {
-    const { finalCommonCards, pot, playerIndex, winningHand, activePlayer } =
-      await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
+    const {
+      finalCommonCards,
+      pot,
+      playerIndex,
+      winningHand,
+      activePlayer,
+      players,
+    } = await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
 
     const finalResult = {
       commonCards: finalCommonCards,
@@ -54,17 +68,21 @@ export class GameFlowGateway {
       playerWon: playerIndex,
       checkResult: winningHand,
       activePlayer: activePlayer,
+      indexAndBalance: await this.cycleManagerService.getPlayersIndexAndBalance(
+        DEFAULT_ROOM_ID,
+      ),
+      players: players,
     };
     this.server.emit('currentState', finalResult);
   }
 
   async handleConnection(client: Socket) {
-    await this.emitCurrentState();
-    const playerIndexOnTable = await this.gameFlowService.playerJoin(
+    const playerIndexAtTableAndBalance = await this.gameFlowService.playerJoin(
       client.id,
       DEFAULT_ROOM_ID,
     );
-    client.emit('joinGame', playerIndexOnTable);
+    await this.emitCurrentState();
+    client.emit('joinGame', playerIndexAtTableAndBalance);
   }
 
   @SubscribeMessage('createGameFlow')
@@ -85,7 +103,10 @@ export class GameFlowGateway {
       );
       await this.emitCurrentState();
 
-      this.server.to(player.clientId).emit('initRound', playerHand);
+      this.server.to(player.clientId).emit('initRound', {
+        playerIndex: player.playerIndex,
+        playerHand: playerHand,
+      });
     }
   }
 
@@ -127,5 +148,22 @@ export class GameFlowGateway {
     }
     await this.emitCurrentState();
     this.server.emit('fold', newGameState);
+  }
+
+  @SubscribeMessage('raise')
+  async raise(@ConnectedSocket() client: Socket, @MessageBody() value: number) {
+    const newGameState = await this.cycleManagerService.raise(
+      client.id,
+      DEFAULT_ROOM_ID,
+      value,
+    );
+    try {
+      if (newGameState instanceof GameState) {
+        await this.emitCurrentState();
+        this.server.emit('call', newGameState);
+      }
+    } catch {
+      console.error('Error in raise gateway.');
+    }
   }
 }
