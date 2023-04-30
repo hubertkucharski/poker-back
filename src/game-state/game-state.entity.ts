@@ -35,6 +35,9 @@ export class GameState extends BaseEntity {
   @Column({ nullable: true, type: 'int' })
   pot: number;
 
+  @Column({ nullable: true, type: 'int' })
+  currentMaxBet: number;
+
   @Column({ nullable: true, type: 'smallint' })
   activePlayer: number;
 

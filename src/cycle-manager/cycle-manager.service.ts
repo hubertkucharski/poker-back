@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Card, Game } from 'holdem-poker';
+import { Game } from 'holdem-poker';
 import { GameStateService } from '../game-state/game-state.service';
-import { currentDecision } from '../players/players.entity';
+import { currentDecision, Players } from '../players/players.entity';
 
 const INITIAL_BET = 0;
 const DEFAULT_PLAYER_MONEY = 0;
@@ -25,15 +25,30 @@ export class CycleManagerService {
         player.currentDecision !== currentDecision.FOLD
       ) {
         player.currentDecision = currentDecision.NOT_DECIDED;
+        player.currentBet = 0;
         player.save();
       }
     });
+    await this.nextRoundFirstPlayer(roomId);
+    await this.resetMaxRoundBet(roomId);
     this.game.endRound();
     this.game.startRound();
   }
-
+  async nextRoundFirstPlayer(roomId) {
+    const playersInRoom = await this.getPlayersInRoom(roomId);
+    const stillPlayingPlayer = playersInRoom.find(
+      (player) =>
+        player.currentDecision !== currentDecision.NOT_PLAYING &&
+        player.currentDecision !== currentDecision.FOLD,
+    );
+    const playerIndex = stillPlayingPlayer.playerIndex;
+    await this.gameStateService.setActivePlayer(playerIndex, roomId);
+  }
   async startRound(roomId) {
     const playersInRoom = await this.getPlayersInRoom(roomId);
+    await this.resetMaxRoundBet(roomId);
+    await this.resetPot(roomId);
+
     if (playersInRoom.length <= 1) {
       console.log('Wait for at least one more player.');
       return [];
@@ -42,6 +57,7 @@ export class CycleManagerService {
       playersInRoom.map((player, index) => {
         player.playerIndexInGame = index;
         player.currentDecision = currentDecision.NOT_DECIDED;
+        player.currentBet = 0;
         player.save();
         return player.balance;
       }),
@@ -50,6 +66,17 @@ export class CycleManagerService {
     this.game.startRound();
 
     return playersInRoom;
+  }
+
+  async resetMaxRoundBet(roomId) {
+    const maxRoundBet = await this.gameStateService.getOneState(roomId);
+    maxRoundBet.currentMaxBet = 0;
+    await maxRoundBet.save();
+  }
+  async resetPot(roomId) {
+    const maxRoundBet = await this.gameStateService.getOneState(roomId);
+    maxRoundBet.pot = 0;
+    await maxRoundBet.save();
   }
 
   async check(clientId, roomId) {
@@ -65,14 +92,26 @@ export class CycleManagerService {
       clientId,
       roomId,
     );
-    this.game.fold(playerIndexInGame);
+
     await this.gameStateService.setCurrentDecision(
       clientId,
       roomId,
       currentDecision.FOLD,
     );
-    if (this.isAllPlayersFolded()) return END_GAME;
+    try {
+      //remove player hand from the game
+      this.game.players[playerIndexInGame].hand = [
+        { suit: '', value: -1 },
+        { suit: '', value: -1 },
+      ];
+      this.game.players[playerIndexInGame].folded = true;
+      this.game.players[playerIndexInGame].active = false;
+      // this.game.fold(playerIndexInGame);
 
+      if (this.isAllPlayersFolded()) return END_GAME;
+  } catch {
+      return END_GAME;
+    }
     return await this.nextActivePlayer(roomId);
   }
 
@@ -81,7 +120,19 @@ export class CycleManagerService {
       clientId,
       roomId,
     );
+
+    const roomState = await this.gameStateService.getOneState(roomId);
+    const player = await Players.findOne({ where: { clientId } });
+    if (roomState.currentMaxBet > player.currentBet) {
+      player.balance -= roomState.currentMaxBet - player.currentBet;
+      roomState.pot += roomState.currentMaxBet - player.currentBet;
+      player.currentBet = roomState.currentMaxBet;
+
+      await roomState.save();
+      await player.save();
+    }
     this.game.call(playerIndexInGame);
+
     await this.gameStateService.setCurrentDecision(
       clientId,
       roomId,
@@ -90,11 +141,18 @@ export class CycleManagerService {
     return this.nextActivePlayer(roomId);
   }
 
-  async raise(clientId, roomId, value) {
+  async raise(clientId, roomId, value: number) {
     const playerIndexInGame = await this.removePreviousPlayersActionIfNotFolded(
       clientId,
       roomId,
     );
+    const player = await Players.findOne({ where: { clientId } });
+
+    const roomState = await this.gameStateService.getOneState(roomId);
+    roomState.currentMaxBet = value;
+    roomState.pot += value - player.currentBet;
+    await roomState.save();
+
     this.game.raise(playerIndexInGame, value);
 
     return await this.nextActivePlayer(roomId);
@@ -114,6 +172,50 @@ export class CycleManagerService {
   async getPlayersIndexAndBalance(roomId: string) {
     return await this.gameStateService.getPlayersIndexAndBalance(roomId);
   }
+  async getFinalResults(roomId: string, pot: number) {
+    const players = await this.gameStateService.findPlayersInRoom(roomId);
+    await this.gameStateService.setActivePlayer(
+      ALL_PLAYERS_MAKE_DECISION,
+      roomId,
+    );
+    const playersHands = this.getPlayersFromGameState();
+    const isAllPlayersFolded = this.isAllPlayersFolded();
+
+    const checkResult = isAllPlayersFolded
+      ? { index: this.lastNotFoldedPlayerIndex(), name: '' }
+      : this.game.checkResult();
+
+    const playerWins = await this.getPlayerIndexAtTable(
+      checkResult.index,
+      roomId,
+    );
+
+    let finalResults = [];
+    players.players.map((player) => {
+      if (player.currentDecision !== currentDecision.NOT_PLAYING) {
+        const newBalance =
+          player.playerIndex === playerWins
+            ? (player.balance += pot)
+            : player.balance;
+        player.balance = newBalance;
+        player.currentDecision = currentDecision.NOT_PLAYING;
+
+        player.save();
+        finalResults.push({
+          playerWins: playerWins,
+          winningHand: checkResult.name,
+          playerIndex: player.playerIndex,
+          balance: newBalance,
+          currentBet: '',
+          hand:
+            player.currentDecision === currentDecision.FOLD
+              ? {}
+              : playersHands[player.playerIndexInGame].hand,
+        });
+      }
+    });
+    return finalResults;
+  }
 
   async nextActivePlayer(roomId: string) {
     const nextActivePlayer = await this.nextPlayer(roomId);
@@ -124,8 +226,11 @@ export class CycleManagerService {
     if (this.game.getState().communityCards.length === 5) {
       return END_GAME;
     }
-    await this.nextRound(roomId);
     return ALL_PLAYERS_MAKE_DECISION;
+  }
+
+  getGameState() {
+    return this.game.getState();
   }
 
   getPlayersFromGameState() {
@@ -176,45 +281,16 @@ export class CycleManagerService {
   }
 
   async nextPlayer(roomId: string) {
-    const players = await this.getPlayersInRoom(roomId);
-    for (let i = 0; i < players.length; i++) {
-      const player = players[i];
+    const playersInRoom = await this.getPlayersInRoom(roomId);
+
+    for (let i = 0; i < playersInRoom.length; i++) {
+      const player = playersInRoom[i];
 
       if (player.currentDecision === currentDecision.NOT_DECIDED) {
         return player.playerIndex;
       }
     }
     return ALL_PLAYERS_MAKE_DECISION;
-  }
-
-  async gameResult(roomId): Promise<{
-    playerIndex: number;
-    winningHand: string;
-    finalCommonCards: Card[];
-    pot: number;
-    activePlayer: number;
-    players: Card[];
-  }> {
-    await this.gameStateService.setActivePlayer(
-      ALL_PLAYERS_MAKE_DECISION,
-      roomId,
-    );
-    const finalCommonCards = this.game.getState().communityCards;
-    const players = this.game.getState().players;
-    const pot = this.game.getState().pot;
-    const isAllPlayersFolded = this.isAllPlayersFolded();
-    const checkResult = isAllPlayersFolded
-      ? { index: this.lastNotFoldedPlayerIndex(), name: '' }
-      : this.game.checkResult();
-
-    return {
-      playerIndex: await this.getPlayerIndexAtTable(checkResult.index, roomId),
-      winningHand: checkResult.name,
-      finalCommonCards: finalCommonCards,
-      pot: pot,
-      activePlayer: END_GAME,
-      players: players,
-    };
   }
 
   async getActivePlayer(roomId): Promise<number> {
@@ -228,5 +304,19 @@ export class CycleManagerService {
       (player) => player.playerIndexInGame === indexInGame,
     );
     return player.playerIndex;
+  }
+
+  async getPot(roomId) {
+    return (await this.gameStateService.getOneState(roomId)).pot;
+  }
+
+  async getCurrentMaxBet(roomId) {
+    return (await this.gameStateService.getOneState(roomId)).currentMaxBet;
+  }
+
+  async ifPlayerInGame(clientId, roomId) {
+    const playersInRoom = await this.getPlayersInRoom(roomId);
+    const player = playersInRoom.find((player) => player.clientId === clientId);
+    return player.currentDecision !== currentDecision.NOT_PLAYING;
   }
 }

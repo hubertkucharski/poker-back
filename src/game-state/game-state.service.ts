@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GameState } from './game-state.entity';
 import { Players } from '../players/players.entity';
-import { isLogLevelEnabled } from '@nestjs/common/services/utils';
 
 const DEFAULT_BLINDS = 5;
 const DEFAULT_NUMBER_OF_SEATS = 6;
@@ -91,6 +90,8 @@ export class GameStateService {
       playersIndexAndBalance.push({
         playerIndex: player.playerIndex,
         balance: player.balance,
+        currentBet: player.currentBet,
+        currentDecision: player.currentDecision,
       }),
     );
 

@@ -28,6 +28,9 @@ export class Players extends BaseEntity {
   @Column({ nullable: true, type: 'int', default: 1000 })
   balance: number;
 
+  @Column({ nullable: true, type: 'int', default: 0 })
+  currentBet: number;
+
   @Column({ nullable: false, type: 'smallint', default: -1 })
   @Max(6)
   playerIndex: number;

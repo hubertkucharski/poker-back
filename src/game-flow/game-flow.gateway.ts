@@ -33,45 +33,47 @@ export class GameFlowGateway {
   ) {}
 
   async emitCurrentState() {
-    const { communityCards, pot } = this.cycleManagerService.game.getState();
+    const { communityCards } = this.cycleManagerService.game.getState();
+    const pot = await this.cycleManagerService.getPot(DEFAULT_ROOM_ID);
+    const currentMaxBet = await this.cycleManagerService.getCurrentMaxBet(
+      DEFAULT_ROOM_ID,
+    );
+    const activePlayer = await this.cycleManagerService.getActivePlayer(
+      DEFAULT_ROOM_ID,
+    );
+    const players = await this.cycleManagerService.getPlayersIndexAndBalance(
+      DEFAULT_ROOM_ID,
+    );
 
     const currentState = {
       commonCards: communityCards,
       pot: pot,
-      checkResult: '',
+      currentMaxBet: currentMaxBet,
+      checkResult: 0,
       playerWon: NO_WINNER,
-      activePlayer: await this.cycleManagerService.getActivePlayer(
-        DEFAULT_ROOM_ID,
-      ),
-      indexAndBalance: await this.cycleManagerService.getPlayersIndexAndBalance(
-        DEFAULT_ROOM_ID,
-      ),
-      players: [],
+      activePlayer: activePlayer,
+      players: players,
     };
 
     this.server.emit('currentState', currentState);
   }
 
   async emitCheckResult() {
-    const {
-      finalCommonCards,
+    const pot = await this.cycleManagerService.getPot(DEFAULT_ROOM_ID);
+    const { communityCards } = this.cycleManagerService.getGameState();
+    const finalPlayers = await this.cycleManagerService.getFinalResults(
+      DEFAULT_ROOM_ID,
       pot,
-      playerIndex,
-      winningHand,
-      activePlayer,
-      players,
-    } = await this.cycleManagerService.gameResult(DEFAULT_ROOM_ID);
+    );
 
     const finalResult = {
-      commonCards: finalCommonCards,
+      commonCards: communityCards,
       pot: pot,
-      playerWon: playerIndex,
-      checkResult: winningHand,
-      activePlayer: activePlayer,
-      indexAndBalance: await this.cycleManagerService.getPlayersIndexAndBalance(
-        DEFAULT_ROOM_ID,
-      ),
-      players: players,
+      currentMaxBet: 0,
+      playerWon: finalPlayers[0].playerWins,
+      checkResult: finalPlayers[0].winningHand,
+      activePlayer: END_GAME,
+      players: finalPlayers,
     };
     this.server.emit('currentState', finalResult);
   }
@@ -111,8 +113,18 @@ export class GameFlowGateway {
   }
 
   async handleDisconnect(client: Socket) {
-    await this.gameFlowService.playerLeave(client.id, DEFAULT_ROOM_ID);
-    console.log('Server disconnected');
+    if (
+      await this.cycleManagerService.ifPlayerInGame(client.id, DEFAULT_ROOM_ID)
+    ) {
+      console.log('fold disconnect');
+
+      if (await this.fold(client)) {
+        await this.gameFlowService.playerLeave(client.id, DEFAULT_ROOM_ID);
+      }
+    } else {
+      await this.gameFlowService.playerLeave(client.id, DEFAULT_ROOM_ID);
+      console.log('Server disconnected');
+    }
   }
 
   @SubscribeMessage('check')
@@ -132,6 +144,9 @@ export class GameFlowGateway {
       await this.emitCheckResult();
       return;
     }
+    if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
+      await this.cycleManagerService.nextRound(DEFAULT_ROOM_ID);
+    }
     await this.emitCurrentState();
     this.server.emit('call', newGameState);
   }
@@ -144,10 +159,15 @@ export class GameFlowGateway {
     );
     if (newGameState === END_GAME) {
       await this.emitCheckResult();
-      return;
+      return newGameState;
+    }
+    if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
+      await this.cycleManagerService.nextRound(DEFAULT_ROOM_ID);
     }
     await this.emitCurrentState();
     this.server.emit('fold', newGameState);
+    //return only for wait for player fold before leave table
+    return newGameState;
   }
 
   @SubscribeMessage('raise')
@@ -157,6 +177,7 @@ export class GameFlowGateway {
       DEFAULT_ROOM_ID,
       value,
     );
+    await this.gameFlowService.changePlayerBalance(client.id, value);
     try {
       if (newGameState instanceof GameState) {
         await this.emitCurrentState();
