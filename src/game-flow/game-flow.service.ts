@@ -29,4 +29,11 @@ export class GameFlowService {
     await this.gameStateService.removePlayerFromTable(clientId, roomId);
     await this.playersService.removePlayerFromRoom(clientId);
   }
+
+  async changePlayerBalance(clientId, value) {
+    const updatePlayer = await this.playersService.getOnePlayer(clientId);
+    updatePlayer.balance -= value - updatePlayer.currentBet;
+    updatePlayer.currentBet = value;
+    await updatePlayer.save();
+  }
 }
