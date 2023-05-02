@@ -41,14 +41,24 @@ export class CycleManagerService {
         player.currentDecision !== currentDecision.NOT_PLAYING &&
         player.currentDecision !== currentDecision.FOLD,
     );
-    const playerIndex = stillPlayingPlayer.playerIndex;
-    await this.gameStateService.setActivePlayer(playerIndex, roomId);
+    if (!stillPlayingPlayer) {
+      await this.gameStateService.setActivePlayer(
+        ALL_PLAYERS_MAKE_DECISION,
+        roomId,
+      );
+    } else {
+      const playerIndex = stillPlayingPlayer.playerIndex;
+      await this.gameStateService.setActivePlayer(playerIndex, roomId);
+    }
   }
   async startRound(roomId) {
     const playersInRoom = await this.getPlayersInRoom(roomId);
     await this.resetMaxRoundBet(roomId);
     await this.resetPot(roomId);
-
+    await this.gameStateService.setActivePlayer(
+      playersInRoom.find((player) => player.playerIndex > -1).playerIndex,
+      roomId,
+    );
     if (playersInRoom.length <= 1) {
       console.log('Wait for at least one more player.');
       return [];
@@ -109,7 +119,21 @@ export class CycleManagerService {
       // this.game.fold(playerIndexInGame);
 
       if (this.isAllPlayersFolded()) return END_GAME;
-  } catch {
+    } catch {
+      return END_GAME;
+    }
+    try {
+      //remove player hand from the game
+      this.game.players[playerIndexInGame].hand = [
+        { suit: '', value: -1 },
+        { suit: '', value: -1 },
+      ];
+      this.game.players[playerIndexInGame].folded = true;
+      this.game.players[playerIndexInGame].active = false;
+      // this.game.fold(playerIndexInGame);
+
+      if (this.isAllPlayersFolded()) return END_GAME;
+    } catch {
       return END_GAME;
     }
     return await this.nextActivePlayer(roomId);
@@ -280,8 +304,33 @@ export class CycleManagerService {
     return this.gameStateService.getPlayerIndexInGame(clientId, roomId);
   }
 
+  async smallestBet(playersInRoom) {
+    const stillPlayingPlayers = playersInRoom.filter(
+      (player) => player.currentDecision === currentDecision.NOT_DECIDED,
+    );
+    if (stillPlayingPlayers.length === 0) {
+      return ALL_PLAYERS_MAKE_DECISION;
+    }
+    if (stillPlayingPlayers.length > 1) {
+      const smallestBet = stillPlayingPlayers.reduce((acc, curr) =>
+        curr.currentBet < acc.currentBet ? curr : acc,
+      );
+      return smallestBet.playerIndex;
+    }
+    if (stillPlayingPlayers.length === 1) {
+      return stillPlayingPlayers[0].playerIndex;
+    }
+  }
+
   async nextPlayer(roomId: string) {
     const playersInRoom = await this.getPlayersInRoom(roomId);
+    if (
+      playersInRoom.find(
+        (player) => player.currentDecision === currentDecision.RAISE,
+      )
+    ) {
+      return await this.smallestBet(playersInRoom);
+    }
 
     for (let i = 0; i < playersInRoom.length; i++) {
       const player = playersInRoom[i];
