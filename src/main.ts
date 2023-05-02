@@ -1,6 +1,5 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { config as localConfig } from '../config/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,6 +8,6 @@ async function bootstrap() {
   //   origin: localConfig.corsOrigin,
   //   credentials: true,
   // });
-  await app.listen(localConfig.PORT);
+  await app.listen(process.env.PORT ?? 3001);
 }
 bootstrap();
