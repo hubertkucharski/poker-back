@@ -55,14 +55,14 @@ export class CycleManagerService {
     const playersInRoom = await this.getPlayersInRoom(roomId);
     await this.resetMaxRoundBet(roomId);
     await this.resetPot(roomId);
-    await this.gameStateService.setActivePlayer(
-      playersInRoom.find((player) => player.playerIndex > -1).playerIndex,
-      roomId,
-    );
     if (playersInRoom.length <= 1) {
       console.log('Wait for at least one more player.');
       return [];
     }
+    await this.gameStateService.setActivePlayer(
+      playersInRoom.find((player) => player.playerIndex > -1).playerIndex,
+      roomId,
+    );
     this.game.newRound(
       playersInRoom.map((player, index) => {
         player.playerIndexInGame = index;
