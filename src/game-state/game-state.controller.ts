@@ -21,9 +21,4 @@ export class GameStateController {
   createState(): Promise<any> {
     return this.gameStateService.createState();
   }
-
-  @Put('/')
-  setState(): Promise<any> {
-    return this.gameStateService.updateState(DEFAULT_ROOM_ID);
-  }
 }
