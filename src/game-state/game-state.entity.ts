@@ -41,6 +41,9 @@ export class GameState extends BaseEntity {
   @Column({ nullable: true, type: 'smallint' })
   activePlayer: number;
 
+  @Column({ nullable: true, type: 'int' })
+  counter: number;
+
   @Column({
     type: 'enum',
     enum: round,

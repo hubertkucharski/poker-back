@@ -12,8 +12,13 @@ export class PlayersService {
   async addPlayer(clientId) {
     const newPlayer = new Players();
     newPlayer.clientId = clientId;
-    newPlayer.balance = 999;
+    newPlayer.balance = 600;
+
+    const counter = await this.getOnePlayer('counter');
+    counter.balance += 1;
+
     await newPlayer.save();
+    await counter.save();
     return newPlayer;
   }
   async addPlayerIndex(clientId, playerIndex: number) {
