@@ -8,8 +8,6 @@ export class GameFlowService {
   constructor(
     @Inject(GameStateService) private gameStateService: GameStateService,
     @Inject(PlayersService) private playersService: PlayersService,
-    @Inject(CycleManagerService)
-    private cycleManagerService: CycleManagerService,
   ) {}
 
   async playerJoin(clientId: string, roomId: string) {

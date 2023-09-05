@@ -14,6 +14,7 @@ export enum currentDecision {
   FOLD = 'fold',
   CALL = 'call',
   RAISE = 'raise',
+  CHECK = 'check',
   NOT_PLAYING = 'not playing',
 }
 

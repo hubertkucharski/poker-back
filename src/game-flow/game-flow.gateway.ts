@@ -17,8 +17,10 @@ import { GameState } from '../game-state/game-state.entity';
 
 export const DEFAULT_ROOM_ID = '953bed85-690a-43bd-825a-b94e9ed4c722';
 
+const AI_PLAYER_CLIENT_ID = 'ai-clientId';
 const EMPTY_HAND = '';
-
+export let ai_hand = EMPTY_HAND;
+export const DEFAULT_AI_POSITION = 3;
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -103,12 +105,23 @@ export class GameFlowGateway {
       const playerHand = await this.cycleManagerService.getPlayerCards(
         player.playerIndexInGame,
       );
-      await this.emitCurrentState();
+      if (player.clientId === AI_PLAYER_CLIENT_ID) {
+        ai_hand = JSON.stringify(playerHand);
+      } else {
+        await this.emitCurrentState();
 
-      this.server.to(player.clientId).emit('initRound', {
-        playerIndex: player.playerIndex,
-        playerHand: playerHand,
-      });
+        this.server.to(player.clientId).emit('initRound', {
+          playerIndex: player.playerIndex,
+          playerHand: playerHand,
+        });
+      }
+    }
+    if (
+      (await this.cycleManagerService.getActivePlayer(DEFAULT_ROOM_ID)) ===
+      DEFAULT_AI_POSITION
+    ) {
+      await this.cycleManagerService.aiAnswer();
+      await this.emitCurrentState();
     }
   }
 
@@ -135,16 +148,15 @@ export class GameFlowGateway {
 
   @SubscribeMessage('call')
   async call(@ConnectedSocket() client: Socket) {
-    const newGameState = this.cycleManagerService.call(
+    const newGameState = await this.cycleManagerService.call(
       client.id,
       DEFAULT_ROOM_ID,
     );
-
-    if ((await newGameState) === END_GAME) {
+    if (newGameState === END_GAME) {
       await this.emitCheckResult();
       return;
     }
-    if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
+    if (newGameState === ALL_PLAYERS_MAKE_DECISION) {
       await this.cycleManagerService.nextRound(DEFAULT_ROOM_ID);
     }
     await this.emitCurrentState();
@@ -161,12 +173,12 @@ export class GameFlowGateway {
       await this.emitCheckResult();
       return newGameState;
     }
-    if ((await newGameState) === ALL_PLAYERS_MAKE_DECISION) {
+    if (newGameState === ALL_PLAYERS_MAKE_DECISION) {
       await this.cycleManagerService.nextRound(DEFAULT_ROOM_ID);
+      await this.emitCurrentState();
     }
     await this.emitCurrentState();
     this.server.emit('fold', newGameState);
-    //return only for wait for player fold before leave table
     return newGameState;
   }
 
@@ -178,6 +190,16 @@ export class GameFlowGateway {
       value,
     );
     await this.gameFlowService.changePlayerBalance(client.id, value);
+
+    if (newGameState === ALL_PLAYERS_MAKE_DECISION) {
+      await this.cycleManagerService.nextRound(DEFAULT_ROOM_ID);
+      await this.emitCurrentState();
+    }
+
+    if (newGameState === END_GAME) {
+      await this.emitCheckResult();
+      return;
+    }
     try {
       if (newGameState instanceof GameState) {
         await this.emitCurrentState();

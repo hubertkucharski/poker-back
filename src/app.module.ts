@@ -8,6 +8,7 @@ import { GameFlowModule } from './game-flow/game-flow.module';
 import { CycleManagerModule } from './cycle-manager/cycle-manager.module';
 import { GameStateModule } from './game-state/game-state.module';
 import { PlayersModule } from './players/players.module';
+import { PlayerAiModule } from './player-ai/player-ai.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { PlayersModule } from './players/players.module';
     CycleManagerModule,
     GameStateModule,
     PlayersModule,
+    PlayerAiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
